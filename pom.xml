@@ -104,6 +104,7 @@
             <module>environments/servlet</module>
             <module>environments/osgi/build</module>
             <module>environments/osgi/core</module>
+            <module>environments/osgi/examples</module>
          </modules>
       </profile>
       <profile>
