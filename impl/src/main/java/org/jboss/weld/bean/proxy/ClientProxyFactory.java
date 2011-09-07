@@ -61,14 +61,14 @@ public class ClientProxyFactory<T> extends ProxyFactory<T>
       CACHABLE_SCOPES = Collections.unmodifiableSet(scopes);
    }
 
-   public ClientProxyFactory(Class<?> proxiedBeanType, Set<? extends Type> typeClosure, Bean<?> bean)
+   public ClientProxyFactory(String contextId, Class<?> proxiedBeanType, Set<? extends Type> typeClosure, Bean<?> bean)
    {
-      super(proxiedBeanType, typeClosure, bean);
+      super(contextId, proxiedBeanType, typeClosure, bean);
    }
 
-   public ClientProxyFactory(Class<?> proxiedBeanType, Set<? extends Type> typeClosure, String proxyName, Bean<?> bean)
+   public ClientProxyFactory(String contextId, Class<?> proxiedBeanType, Set<? extends Type> typeClosure, String proxyName, Bean<?> bean)
    {
-      super(proxiedBeanType, typeClosure, proxyName, bean);
+      super(contextId, proxiedBeanType, typeClosure, proxyName, bean);
    }
 
    @Override
