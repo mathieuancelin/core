@@ -57,11 +57,14 @@ public class ProxyMethodHandler implements MethodHandler, Serializable
    private final String beanId;
 
    private transient Bean<?> bean;
+   
+   private final String contextId;
 
-   public ProxyMethodHandler(BeanInstance beanInstance, Bean<?> bean)
+   public ProxyMethodHandler(String contextId, BeanInstance beanInstance, Bean<?> bean)
    {
       this.beanInstance = beanInstance;
       this.bean = bean;
+      this.contextId = contextId;
       if(bean instanceof PassivationCapable)
       {
          this.beanId = ((PassivationCapable)bean).getId();
@@ -115,7 +118,7 @@ public class ProxyMethodHandler implements MethodHandler, Serializable
       }
       else if (thisMethod.getName().equals("writeReplace"))
       {
-         return new org.jboss.weld.bean.proxy.util.SerializableProxy(self, getBean());
+         return new org.jboss.weld.bean.proxy.util.SerializableProxy(contextId, self, getBean());
       }
       else if (thisMethod.getName().equals("_initMH"))
       {
@@ -123,7 +126,7 @@ public class ProxyMethodHandler implements MethodHandler, Serializable
          {
             log.trace("Setting new MethodHandler with bean instance for " + args[0] + " on " + self.getClass());
          }
-         return new ProxyMethodHandler(new TargetBeanInstance(args[0]), getBean());
+         return new ProxyMethodHandler(contextId, new TargetBeanInstance(args[0]), getBean());
       }
       else
       {
@@ -151,7 +154,7 @@ public class ProxyMethodHandler implements MethodHandler, Serializable
          {
             throw new WeldException(PROXY_HANDLER_SERIALIZED_FOR_NON_SERIALIZABLE_BEAN);
          }
-         bean = Container.instance().services().get(ContextualStore.class).<Bean<Object>, Object> getContextual(beanId);
+         bean = Container.instance(contextId).services().get(ContextualStore.class).<Bean<Object>, Object> getContextual(beanId);
       }
       return bean;
    }

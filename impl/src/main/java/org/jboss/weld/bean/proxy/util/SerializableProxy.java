@@ -54,12 +54,13 @@ public class SerializableProxy implements Serializable
    // Information required to generate proxy classes
    private final String proxyClassName;
    private final String beanId;
+   private final String contextId;
 
    // The wrapped proxy object not serialized by default actions
    private transient Object proxyObject;
    private transient boolean writeProxy;
 
-   public SerializableProxy(Object proxyObject, Bean<?> bean)
+   public SerializableProxy(String contextId, Object proxyObject, Bean<?> bean)
    {
       if (!ProxyFactory.isProxy(proxyObject))
       {
@@ -75,6 +76,7 @@ public class SerializableProxy implements Serializable
       }
       this.proxyObject = proxyObject;
       this.proxyClassName = proxyObject.getClass().getName();
+      this.contextId = contextId;
    }
 
    /**
@@ -103,16 +105,16 @@ public class SerializableProxy implements Serializable
    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException
    {
       in.defaultReadObject();
-      Bean<?> bean = (Bean<?>) Container.instance().services().get(ContextualStore.class).<Bean<Object>, Object> getContextual(beanId);
+      Bean<?> bean = (Bean<?>) Container.instance(contextId).services().get(ContextualStore.class).<Bean<Object>, Object> getContextual(beanId);
       if (proxyClassName.endsWith(ClientProxyFactory.CLIENT_PROXY_SUFFIX))
       {
-         proxyObject = Container.instance().deploymentManager().getClientProxyProvider().getClientProxy(bean);
+         proxyObject = Container.instance(contextId).deploymentManager().getClientProxyProvider().getClientProxy(bean);
       }
       else
       {
          // All other proxy classes always exist where a Weld container was
          // deployed
-         Class<?> proxyClass = ProxyFactory.resolveClassLoaderForBeanProxy(bean).loadClass(proxyClassName);
+         Class<?> proxyClass = ProxyFactory.resolveClassLoaderForBeanProxy(contextId, bean).loadClass(proxyClassName);
          try
          {
             proxyObject = proxyClass.getDeclaredMethod("deserializeProxy", ObjectInputStream.class).invoke(null, in);
