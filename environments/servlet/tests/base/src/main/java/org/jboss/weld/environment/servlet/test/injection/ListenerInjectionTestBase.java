@@ -26,7 +26,7 @@ public class ListenerInjectionTestBase
       return baseDeployment(WEB_XML).addClasses(BatListener.class, BatServlet.class, Sewer.class);
    }
    
-   @Test //@Ignore
+   @Test @Ignore
    // Injection doesn't work in listeners in Tomcat
    public void testListenerInjection() throws Exception
    {
