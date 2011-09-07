@@ -24,7 +24,6 @@ package org.jboss.weld.context;
 
 import org.jboss.weld.bootstrap.api.Singleton;
 import org.jboss.weld.bootstrap.api.SingletonProvider;
-import org.jboss.weld.bootstrap.api.helpers.RegistrySingletonProvider;
 import org.jboss.weld.context.beanstore.BeanStore;
 import org.jboss.weld.context.beanstore.ConcurrentHashMapBeanStore;
 

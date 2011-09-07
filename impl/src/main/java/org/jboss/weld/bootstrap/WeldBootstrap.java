@@ -235,6 +235,7 @@ public class WeldBootstrap implements Bootstrap
 
    public Bootstrap startContainer(String contextId, Environment environment, Deployment deployment)
    {
+      Container.currentId.set(contextId);
       this.contextId = contextId;
       synchronized (this)
       {
@@ -298,7 +299,7 @@ public class WeldBootstrap implements Bootstrap
          // Read the deployment structure, this will be the physical structure
          // as caused by the presence of beans.xml
          beanDeployments = deploymentVisitor.visit();
-
+         Container.currentId.remove();
          return this;
       }
    }
