@@ -5,6 +5,8 @@
 .idea
 *.iws
 *.iml
+*.log
+.DS_Store
 target
 examples/jsf/login/src/main/webapp/META-INF/MANIFEST.MF
 examples/jsf/numberguess/src/main/webapp/META-INF/MANIFEST.MF
