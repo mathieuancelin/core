@@ -55,7 +55,7 @@ public class ConversationPropagationFilter implements Filter {
     private String contextId;
 
     public void init(FilterConfig config) throws ServletException {
-        contextId = (String) config.getServletContext().getAttribute(Container.CONTEXT_ID_KEY);
+        contextId = (String) config.getServletContext().getInitParameter(Container.CONTEXT_ID_KEY);
         if (contextId == null) {
             contextId = RegistrySingletonProvider.STATIC_INSTANCE;
         }
