@@ -16,76 +16,88 @@
  */
 package org.jboss.weld.environment.osgi.impl.extension;
 
+import org.jboss.weld.environment.osgi.impl.annotation.OSGiServiceAnnotation;
 import org.jboss.weld.environment.osgi.api.annotation.Filter;
 import org.jboss.weld.environment.osgi.api.annotation.OSGiService;
 import org.jboss.weld.environment.osgi.api.annotation.Required;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.enterprise.inject.spi.AnnotatedCallable;
-import javax.enterprise.inject.spi.AnnotatedParameter;
+import javax.enterprise.inject.spi.AnnotatedField;
+import javax.enterprise.inject.spi.AnnotatedType;
 import javax.enterprise.util.AnnotationLiteral;
 import javax.inject.Qualifier;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * CDI-OSGi annotated parameter. Wrap {@link OSGiService} annotated parameters
- * in order to enable CDI-OSGi features.
- *
+ * This is an {@link AnnotatedField} that wrap all {@link OSGiService}
+ * annotated parameter processed by Weld-OSGi bean bundles Weld containers,
+ * to avoid ambiguous dependency with regular CDI injection point.
+ * <p/>
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
  * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
+ *
+ * @see OSGiServiceAnnotatedParameter
+ * @see OSGiServiceAnnotatedType
  */
-public class CDIOSGIAnnotatedParameter<T> implements AnnotatedParameter<T> {
-    private static Logger logger = LoggerFactory.getLogger(
-            CDIOSGIAnnotatedParameter.class);
+public class OSGiServiceAnnotatedField<T> implements AnnotatedField<T> {
 
-    AnnotatedParameter parameter;
+    private static Logger logger =
+                          LoggerFactory.getLogger(OSGiServiceAnnotatedField.class);
 
-    Set<Annotation> annotations = new HashSet<Annotation>();
+    private AnnotatedField field;
 
-    Filter filter;
+    private Set<Annotation> annotations = new HashSet<Annotation>();
 
-    public CDIOSGIAnnotatedParameter(AnnotatedParameter parameter) {
-        logger.debug("Creation of a new CDIOSGIAnnotatedParameter wrapping {}",
-                parameter);
-        this.parameter = parameter;
-        filter = FilterGenerator.makeFilter(parameter.getAnnotations());
+    private Filter filter;
+
+    public OSGiServiceAnnotatedField(final AnnotatedField<? super T> field) {
+        logger.debug("Creation of a new CDIOSGiAnnotatedField wrapping {}", field);
+        this.field = field;
+        filter = FilterGenerator.makeFilter(filter, field.getAnnotations());
         annotations.add(filter);
         //annotations.add(new AnnotationLiteral<OSGiService>() {});
-        annotations.add(new OSGiServiceQualifier(
-                parameter.getAnnotation(OSGiService.class).value()));
-        if (parameter.getAnnotation(Required.class) != null) {
+        annotations.add(new OSGiServiceAnnotation(
+                field.getJavaMember().getAnnotation(OSGiService.class).value()));
+        if (field.getAnnotation(Required.class) != null) {
             annotations.add(new AnnotationLiteral<Required>() {
             });
         }
-        for (Annotation annotation : parameter.getAnnotations()) {
+        for (Annotation annotation : field.getAnnotations()) {
             if (!annotation.annotationType().isAnnotationPresent(Qualifier.class)) {
                 annotations.add(annotation);
             }
         }
+        logger.debug("New OSGiServiceAnnotatedField constructed {}", this);
     }
 
     @Override
-    public int getPosition() {
-        return parameter.getPosition();
+    public Field getJavaMember() {
+        return field.getJavaMember();
     }
 
     @Override
-    public AnnotatedCallable<T> getDeclaringCallable() {
-        return parameter.getDeclaringCallable();
+    public boolean isStatic() {
+        return field.isStatic();
+    }
+
+    @Override
+    public AnnotatedType<T> getDeclaringType() {
+        return field.getDeclaringType();
     }
 
     @Override
     public Type getBaseType() {
-        return parameter.getBaseType();
+        return field.getBaseType();
     }
 
     @Override
     public Set<Type> getTypeClosure() {
-        return parameter.getTypeClosure();
+        return field.getTypeClosure();
     }
 
     @Override

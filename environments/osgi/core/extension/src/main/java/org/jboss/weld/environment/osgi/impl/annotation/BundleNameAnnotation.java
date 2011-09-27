@@ -14,24 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.environment.osgi.impl.extension;
+package org.jboss.weld.environment.osgi.impl.annotation;
 
-import org.jboss.weld.environment.osgi.api.annotation.OSGiService;
-
+import java.lang.annotation.Annotation;
 import javax.enterprise.util.AnnotationLiteral;
+import org.jboss.weld.environment.osgi.api.annotation.BundleName;
 
-public class OSGiServiceQualifier
-        extends AnnotationLiteral<OSGiService>
-        implements OSGiService {
-    private final int timeout;
+/**
+ * This is a wrapper for the annotation {@link BundleName}.
+ * <p/>
+ * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
+ * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
+ */
+public class BundleNameAnnotation extends AnnotationLiteral<BundleName>
+                                  implements BundleName {
 
-    public OSGiServiceQualifier(int timeout) {
-        this.timeout = timeout;
+    private final String value;
+
+    public BundleNameAnnotation(String value) {
+        this.value = value;
     }
 
     @Override
-    public int value() {
-        return timeout;
+    public String value() {
+        return value;
+    }
+
+    @Override
+    public Class<? extends Annotation> annotationType() {
+        return BundleName.class;
     }
 
 }
