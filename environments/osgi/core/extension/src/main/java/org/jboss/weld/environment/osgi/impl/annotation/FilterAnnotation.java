@@ -14,32 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.environment.osgi.impl.integration;
+package org.jboss.weld.environment.osgi.impl.annotation;
 
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.enterprise.util.TypeLiteral;
-import javax.inject.Inject;
 import java.lang.annotation.Annotation;
+import javax.enterprise.util.AnnotationLiteral;
+import org.jboss.weld.environment.osgi.api.annotation.Filter;
 
 /**
- * It allows a bean bundle to retrieve any of its bean using an {@link Instance}.
+ * This is a wrapper for the annotation {@link Filter}.
  * <p/>
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
  * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
  */
-public class InstanceHolder {
+public class FilterAnnotation extends AnnotationLiteral<Filter>
+                              implements Filter {
 
-    @Inject
-    @Any
-    private Instance<Object> instance;
+    private final String value;
 
-    public <T> Instance<T> select(Class<T> clazz, Annotation... annotations) {
-        return instance.select(clazz, annotations);
+    public FilterAnnotation(String value) {
+        this.value = value;
     }
 
-    public <T> Instance<T> select(TypeLiteral<T> type, Annotation... annotations) {
-        return instance.select(type, annotations);
+    @Override
+    public Class<? extends Annotation> annotationType() {
+        return Filter.class;
+    }
+
+    @Override
+    public String value() {
+        return value;
     }
 
 }

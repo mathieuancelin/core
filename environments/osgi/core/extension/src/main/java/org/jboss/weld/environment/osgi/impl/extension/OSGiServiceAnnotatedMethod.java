@@ -20,58 +20,68 @@ import org.jboss.weld.environment.osgi.api.annotation.OSGiService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.enterprise.inject.spi.AnnotatedConstructor;
+import javax.enterprise.inject.spi.AnnotatedMethod;
 import javax.enterprise.inject.spi.AnnotatedParameter;
 import javax.enterprise.inject.spi.AnnotatedType;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 /**
- * CDI-OSGi annotated constructor. Wrap regular CDI constructors in order to
- * enable CDI-OSGi features.
- *
+ * This is an {@link AnnotatedMethod} that wrap all {@link Inject}
+ * annotated method processed by Weld-OSGi bean bundles Weld containers.
+ * <p/>
+ * It wrap any {@link OSGiService} annotated injection point in these
+ * methods to avoid ambiguous dependency with regular CDI injection point.
+ * <p/>
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
  * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
+ *
+ * @see OSGiServiceAnnotatedParameter
+ * @see OSGiServiceAnnotatedType
  */
-public class CDIOSGiAnnotatedConstructor<T> implements AnnotatedConstructor<T> {
-    private static Logger logger = LoggerFactory.getLogger(
-            CDIOSGiAnnotatedConstructor.class);
+public class OSGiServiceAnnotatedMethod<T> implements AnnotatedMethod<T> {
 
-    AnnotatedConstructor constructor;
+    private static Logger logger =
+                          LoggerFactory.getLogger(OSGiServiceAnnotatedMethod.class);
 
-    List<AnnotatedParameter<T>> parameters = new ArrayList<AnnotatedParameter<T>>();
+    AnnotatedMethod method;
 
-    public CDIOSGiAnnotatedConstructor(AnnotatedConstructor<T> constructor) {
-        logger.debug("Creation of a new CDIOSGiAnnotatedConstructor wrapping {}",
-                constructor);
-        this.constructor = constructor;
-        for (AnnotatedParameter parameter : constructor.getParameters()) {
-            logger.trace("Processing parameter {}", parameter);
+    List<AnnotatedParameter<T>> parameters =
+                                new ArrayList<AnnotatedParameter<T>>();
+
+    public OSGiServiceAnnotatedMethod(AnnotatedMethod<? super T> method) {
+        logger.trace("Entering OSGiServiceAnnotatedMethod : "
+                     + "OSGiServiceAnnotatedMethod() with parameter {}",
+                     new Object[] {method});
+        this.method = method;
+        for (AnnotatedParameter parameter : method.getParameters()) {
             if (parameter.isAnnotationPresent(OSGiService.class)) {
-                parameters.add(new CDIOSGIAnnotatedParameter(parameter));
-            } else {
+                parameters.add(new OSGiServiceAnnotatedParameter(parameter));
+            }
+            else {
                 parameters.add(parameter);
             }
         }
+        logger.debug("New OSGiServiceAnnotatedMethod constructed {}", this);
     }
 
     @Override
-    public Constructor<T> getJavaMember() {
-        return constructor.getJavaMember();
+    public Method getJavaMember() {
+        return method.getJavaMember();
     }
 
     @Override
     public boolean isStatic() {
-        return constructor.isStatic();
+        return method.isStatic();
     }
 
     @Override
     public AnnotatedType<T> getDeclaringType() {
-        return constructor.getDeclaringType();
+        return method.getDeclaringType();
     }
 
     @Override
@@ -81,27 +91,27 @@ public class CDIOSGiAnnotatedConstructor<T> implements AnnotatedConstructor<T> {
 
     @Override
     public Type getBaseType() {
-        return constructor.getBaseType();
+        return method.getBaseType();
     }
 
     @Override
     public Set<Type> getTypeClosure() {
-        return constructor.getTypeClosure();
+        return method.getTypeClosure();
     }
 
     @Override
     public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
-        return constructor.getAnnotation(annotationType);
+        return method.getAnnotation(annotationType);
     }
 
     @Override
     public Set<Annotation> getAnnotations() {
-        return constructor.getAnnotations();
+        return method.getAnnotations();
     }
 
     @Override
     public boolean isAnnotationPresent(Class<? extends Annotation> annotationType) {
-        return constructor.isAnnotationPresent(annotationType);
+        return method.isAnnotationPresent(annotationType);
     }
 
 }

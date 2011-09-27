@@ -14,29 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.environment.osgi.impl.extension;
+package org.jboss.weld.environment.osgi.impl.annotation;
 
-import org.jboss.weld.environment.osgi.api.annotation.Filter;
-
+import java.lang.annotation.Annotation;
 import javax.enterprise.util.AnnotationLiteral;
+import org.jboss.weld.environment.osgi.api.annotation.BundleVersion;
 
 /**
- * Helper class representing an instantiable {@link Filter}.
- *
+ * This is a wrapper for the annotation {@link BundleVersion}.
+ * <p/>
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
+ * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
  */
-public class OSGiFilterQualifierType
-        extends AnnotationLiteral<Filter>
-        implements Filter {
+public class BundleVersionAnnotation extends AnnotationLiteral<BundleVersion>
+                                     implements BundleVersion {
+
     private final String value;
 
-    protected OSGiFilterQualifierType(String value) {
+    public BundleVersionAnnotation(String value) {
         this.value = value;
     }
 
     @Override
     public String value() {
         return value;
+    }
+
+    @Override
+    public Class<? extends Annotation> annotationType() {
+        return BundleVersion.class;
     }
 
 }

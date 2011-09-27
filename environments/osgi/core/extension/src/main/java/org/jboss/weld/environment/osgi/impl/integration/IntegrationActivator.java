@@ -14,14 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.jboss.weld.environment.osgi.impl.integration;
 
 import org.jboss.weld.environment.osgi.api.events.BundleContainerEvents;
 import org.jboss.weld.environment.osgi.api.events.Invalid;
 import org.jboss.weld.environment.osgi.impl.extension.beans.BundleHolder;
 import org.jboss.weld.environment.osgi.impl.extension.beans.ContainerObserver;
-import org.jboss.weld.environment.osgi.impl.extension.service.CDIOSGiExtension;
+import org.jboss.weld.environment.osgi.impl.extension.service.WeldOSGiExtension;
 import org.jboss.weld.environment.osgi.spi.CDIContainer;
 import org.jboss.weld.environment.osgi.spi.CDIContainerFactory;
 import org.osgi.framework.Bundle;
@@ -46,11 +45,15 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * This is the activator of the CDI-OSGi extension part. It starts with the extension bundle.
+ * This is the activator of the Weld-OSGi integration part.
+ * It starts with the extension originBundle.
  * <p/>
- * It looks for a CDI container factory service before it starts managing bean bundles.
- * It monitors bundle and service events to manage/unmanage arriving/departing bean bundle and to start/stop when a CDI
- * container factory service arrives/leaves.
+ * It looks for a CDI container factory service before it starts managing bean
+ * bundles. It monitors bundle and service events to manage/unmanage
+ * arriving/departing bean bundle and to start/stop when a CDI container
+ * factory service arrives/leaves.
+ * <p/>
+ * @see Activator
  *
  * @author Guillaume Sauthier
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
@@ -58,36 +61,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class IntegrationActivator implements BundleActivator, SynchronousBundleListener, ServiceListener {
 
-    private static Logger logger = LoggerFactory.getLogger(IntegrationActivator.class);
+    private static Logger logger =
+                          LoggerFactory.getLogger(IntegrationActivator.class);
 
     private ServiceReference factoryRef = null;
+
     private BundleContext context;
+
     private AtomicBoolean started = new AtomicBoolean(false);
 
     private Map<Long, CDIContainer> managed;
 
     @Override
     public void start(BundleContext context) throws Exception {
-        logger.debug("Integration part starts");
+        logger.trace("Entering IntegrationActivator : start() with parameter {}",
+                     new Object[] {context});
         this.context = context;
         ServiceReference[] refs = context.getServiceReferences(CDIContainerFactory.class.getName(), null);
         if (refs != null && refs.length > 0) {
             factoryRef = refs[0];
             startCDIOSGi();
-        } else {
+        }
+        else {
             logger.warn("No CDI container factory service found");
         }
         context.addServiceListener(this);
+        logger.debug("Weld-OSGi integration part STARTED");
     }
 
     @Override
     public void stop(BundleContext context) throws Exception {
-        logger.debug("Integration part stops");
+        logger.trace("Entering ExtensionActivator : stop() with parameter {}",
+                     new Object[] {context});
         stopCDIOSGi();
+        logger.debug("Weld-OSGi integration part STOPPED");
     }
 
-    public void startCDIOSGi() throws Exception {
-        logger.info("CDI-OSGi start bundle management");
+    /**
+     * This method start Weld-OSGi framework for the OSGi environment. It
+     * manages all already active bean bundles and strats listening for
+     * {@link BundleEvent}.
+     * <p/>
+     */
+    public void startCDIOSGi() {
+        logger.trace("Entering ExtensionActivator : "
+                     + "startCDIOSGi() with no parameter");
+        logger.info("Weld-OSGi bean bundles management STARTED");
         started.set(true);
         managed = new HashMap<Long, CDIContainer>();
         for (Bundle bundle : context.getBundles()) {
@@ -99,8 +118,14 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
         context.addBundleListener(this);
     }
 
-    public void stopCDIOSGi() throws Exception {
-        logger.info("CDI-OSGi stop bundle management");
+    /**
+     * This method stop Weld-OSGi framework for the OSGi environment. It
+     * unmanages all bean bundles.
+     * <p/>
+     */
+    public void stopCDIOSGi() {
+        logger.trace("Entering ExtensionActivator : "
+                     + "stopCDIOSGi() with no parameter");
         for (Bundle bundle : context.getBundles()) {
             logger.trace("Scanning {}", bundle.getSymbolicName());
             if (managed.get(bundle.getBundleId()) != null) {
@@ -108,11 +133,17 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
             }
         }
         started.set(false);
+        logger.info("Weld-OSGi bean bundles management STOPPED");
     }
 
+    /**
+     * This method listens to arriving/departing bundle to manage/unmanage them.
+     * <p/>
+     * @param event the listened {@link BundleEvent}.
+     */
     @Override
     public void bundleChanged(BundleEvent event) {
-        switch (event.getType()) {
+        switch(event.getType()) {
             case BundleEvent.STARTED:
                 logger.debug("Bundle {} has started", event.getBundle().getSymbolicName());
                 if (started.get()) {
@@ -128,6 +159,17 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
         }
     }
 
+    /**
+     * This method listens to arriving/departing service to monitor CDI
+     * container factory services.
+     * <p/>
+     * When such a service first arrive, Weld-OSGi framework can start. Then
+     * other services are store and when the acitve service is departing
+     * Weld-OSGi framework is restarted and switch to next available service
+     * (or just stop is there is none).
+     * <p/>
+     * @param event the listened {@link ServiceEvent}.
+     */
     @Override
     public void serviceChanged(ServiceEvent event) {
         try {
@@ -138,14 +180,16 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
                     factoryRef = refs[0];
                     startCDIOSGi();
                 }
-            } else if (ServiceEvent.UNREGISTERING == event.getType()) {
+            }
+            else if (ServiceEvent.UNREGISTERING == event.getType()) {
                 if (started.get() && (event.getServiceReference().compareTo(factoryRef) == 0)) {
                     logger.warn("CDI container factory service unregistered");
                     if (refs == null || refs.length == 0) {
                         logger.warn("No CDI container factory service found");
                         factoryRef = null;
                         stopCDIOSGi();
-                    } else { //switch to the next factory service
+                    }
+                    else { //switch to the next factory service
                         logger.info("Switching to the next factory service");
                         stopCDIOSGi();
                         factoryRef = refs[0];
@@ -153,19 +197,20 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
                     }
                 }
             }
-        } catch (Exception ex) {
+        }
+        catch(Exception ex) {
             ex.printStackTrace();
         }
     }
 
     private void startManagement(Bundle bundle) {
         if (bundle.getHeaders().get("Embedded-CDIContainer") != null
-                && bundle.getHeaders().get("Embedded-CDIContainer").equals("true")) {
+            && bundle.getHeaders().get("Embedded-CDIContainer").equals("true")) {
             return;
         }
         logger.debug("Managing {}", bundle.getSymbolicName());
-        boolean set = CDIOSGiExtension.currentBundle.get() != null;
-        CDIOSGiExtension.currentBundle.set(bundle.getBundleId());
+        boolean set = WeldOSGiExtension.currentBundle.get() != null;
+        WeldOSGiExtension.currentBundle.set(bundle.getBundleId());
         CDIContainer holder = factory().createContainer(bundle);
         logger.trace("CDI container created");
         holder.initialize();
@@ -179,9 +224,9 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
             holder.getInstance().select(ContainerObserver.class).get().setCurrentContainer(holder);
             // registering publishable services
             ServicePublisher publisher = new ServicePublisher(holder.getBeanClasses(),
-                    bundle,
-                    holder.getInstance(),
-                    factory().getContractBlacklist());
+                                                              bundle,
+                                                              holder.getInstance(),
+                                                              factory().getContractBlacklist());
             publisher.registerAndLaunchComponents();
             // fire container start
             holder.getBeanManager().fireEvent(new BundleContainerEvents.BundleContainerInitialized(bundle.getBundleContext()));
@@ -192,25 +237,27 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
                 regs.add(bundleContext.registerService(Event.class.getName(), holder.getEvent(), null));
                 regs.add(bundleContext.registerService(BeanManager.class.getName(), holder.getBeanManager(), null));
                 regs.add(bundleContext.registerService(Instance.class.getName(), holder.getInstance(), null));
-            } catch (Throwable t) {// Ignore
+            }
+            catch(Throwable t) {// Ignore
                 logger.warn("Unable to register a utility service for bundle {}: {}", bundle, t);
             }
             holder.setRegistrations(regs);
             factory().addContainer(holder);
             managed.put(bundle.getBundleId(), holder);
             logger.debug("Bundle {} is managed", bundle.getSymbolicName());
-        } else {
+        }
+        else {
             logger.debug("Bundle {} is not a bean bundle", bundle.getSymbolicName());
         }
         if (!set) {
-            CDIOSGiExtension.currentBundle.remove();
+            WeldOSGiExtension.currentBundle.remove();
         }
     }
 
     private void stopManagement(Bundle bundle) {
         logger.debug("Unmanaging {}", bundle.getSymbolicName());
-        boolean set = CDIOSGiExtension.currentBundle.get() != null;
-        CDIOSGiExtension.currentBundle.set(bundle.getBundleId());
+        boolean set = WeldOSGiExtension.currentBundle.get() != null;
+        WeldOSGiExtension.currentBundle.set(bundle.getBundleId());
         CDIContainer holder = managed.get(bundle.getBundleId());
         if (started.get() && managed.containsKey(bundle.getBundleId())) {
             if (holder != null) {
@@ -222,7 +269,8 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
                     logger.trace("Firing the BundleContainerEvents.BundleContainerShutdown event");
                     // here singleton issue ?
                     holder.getBeanManager().fireEvent(new BundleContainerEvents.BundleContainerShutdown(bundle.getBundleContext()));
-                } catch (Throwable t) {
+                }
+                catch(Throwable t) {
                 }
                 logger.trace("Shutting down the container {}", holder);
                 //holder.shutdown();
@@ -234,16 +282,18 @@ public class IntegrationActivator implements BundleActivator, SynchronousBundleL
                 }
                 holder.shutdown();
                 logger.debug("Bundle {} is unmanaged", bundle.getSymbolicName());
-            } else {
+            }
+            else {
                 logger.debug("Bundle {} is not a bean bundle", bundle.getSymbolicName());
             }
         }
         if (!set) {
-            CDIOSGiExtension.currentBundle.remove();
+            WeldOSGiExtension.currentBundle.remove();
         }
     }
 
     public CDIContainerFactory factory() {
         return (CDIContainerFactory) context.getService(factoryRef);
     }
+
 }

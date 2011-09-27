@@ -45,8 +45,8 @@ import org.jboss.weld.environment.osgi.api.annotation.BundleName;
 import org.jboss.weld.environment.osgi.api.annotation.BundleVersion;
 
 /**
- * Producers for utilities injection.
- *
+ * This the class responsible for OSGi utility injection for the current bundle.
+ * <b/>
  * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
  * @author Matthieu CLOCHARD - SERLI (matthieu.clochard@serli.com)
  */
@@ -111,9 +111,7 @@ public class OSGiUtilitiesProducer {
             if (bundleVersion == null || bundleVersion.value().equals("")) {
                 Bundle result =
                        (Bundle) Proxy.newProxyInstance(getClass().getClassLoader(),
-                                                       new Class[]{
-                            Bundle.class
-                        },
+                                                       new Class[] { Bundle.class },
                                                        new BundleHandler(
                         bundleName.value(),
                         "",
