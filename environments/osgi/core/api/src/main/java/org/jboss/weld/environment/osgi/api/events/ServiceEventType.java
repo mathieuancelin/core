@@ -28,6 +28,7 @@ package org.jboss.weld.environment.osgi.api.events;
 public enum ServiceEventType {
     SERVICE_ARRIVAL,
     SERVICE_DEPARTURE,
-    SERVICE_CHANGED
-
+    SERVICE_CHANGED,
+    SERVICE_AVAILABLE,
+    SERVICE_UNAVAILABLE
 }

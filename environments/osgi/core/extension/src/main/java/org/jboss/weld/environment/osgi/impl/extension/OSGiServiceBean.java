@@ -176,7 +176,8 @@ public class OSGiServiceBean implements Bean {
     @Override
     public void destroy(Object instance, CreationalContext creationalContext) {
         logger.trace("Entering OSGiServiceBean : "
-                     + "destroy()");
+                     + "destroy() with parameter {}",
+                     new Object[] {creationalContext});
         // Nothing to do, services are unget after each call.
         DynamicServiceHandler handler = handlers.get(instance);
         if (handler != null) {

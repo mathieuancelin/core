@@ -44,11 +44,13 @@ import org.osgi.framework.ServiceReference;
  * @see javax.enterprise.event.Observes
  */
 public class ServiceEvents {
+
     /**
      * Represents the service events for the
      * {@link ServiceEventType#SERVICE_ARRIVAL} state.
      */
     public static class ServiceArrival extends AbstractServiceEvent {
+
         /**
          * Construct a new {@link ServiceArrival} event.
          *
@@ -72,6 +74,7 @@ public class ServiceEvents {
      * {@link ServiceEventType#SERVICE_CHANGED} state.
      */
     public static class ServiceChanged extends AbstractServiceEvent {
+
         /**
          * Construct a new {@link ServiceChanged} event.
          *
@@ -95,6 +98,7 @@ public class ServiceEvents {
      * {@link ServiceEventType#SERVICE_DEPARTURE} state.
      */
     public static class ServiceDeparture extends AbstractServiceEvent {
+
         /**
          * Construct a new {@link ServiceDeparture} event.
          *
@@ -109,6 +113,32 @@ public class ServiceEvents {
         @Override
         public ServiceEventType eventType() {
             return ServiceEventType.SERVICE_DEPARTURE;
+        }
+
+    }
+
+    public static class ServiceAvailable extends AbstractServiceEvent {
+
+        public ServiceAvailable(ServiceReference reference, BundleContext context) {
+            super(reference, context);
+        }
+
+        @Override
+        public ServiceEventType eventType() {
+            return ServiceEventType.SERVICE_AVAILABLE;
+        }
+
+    }
+
+    public static class ServiceUnavailable extends AbstractServiceEvent {
+
+        public ServiceUnavailable(ServiceReference reference, BundleContext context) {
+            super(reference, context);
+        }
+
+        @Override
+        public ServiceEventType eventType() {
+            return ServiceEventType.SERVICE_UNAVAILABLE;
         }
 
     }

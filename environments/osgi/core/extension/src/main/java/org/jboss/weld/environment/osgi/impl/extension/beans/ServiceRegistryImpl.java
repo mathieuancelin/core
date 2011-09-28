@@ -50,6 +50,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jboss.weld.environment.osgi.impl.annotation.FilterAnnotation;
+import org.jboss.weld.environment.osgi.impl.annotation.SpecificationAnnotation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of {@link ServiceRegistry}.
@@ -59,6 +63,9 @@ import java.util.Set;
  */
 @ApplicationScoped
 public class ServiceRegistryImpl implements ServiceRegistry {
+
+    private static final Logger logger =
+                                LoggerFactory.getLogger(ServiceRegistryImpl.class);
 
     @Inject
     private BundleContext registry;
@@ -80,6 +87,12 @@ public class ServiceRegistryImpl implements ServiceRegistry {
 
     @Inject
     private Event<Invalid> invalidEvent;
+
+    @Inject
+    private Event<ServiceEvents.ServiceAvailable> availableEvent;
+
+    @Inject
+    private Event<ServiceEvents.ServiceUnavailable> unavailableEvent;
 
     @Inject
     private WeldOSGiExtension extension;
@@ -148,50 +161,76 @@ public class ServiceRegistryImpl implements ServiceRegistry {
     }
 
     private void checkForValidDependencies(AbstractServiceEvent event) {
+        logger.trace("Entering ServiceRegistryImpl : "
+                     + "checkForValidDependencies() with parameter {} "
+                     + "for bundle {} and instance {}",
+                     new Object[] {event, bundle, this});
         if (event == null || applicable(event.getServiceClasses(getClass()))) {
             boolean valid = true;
             if (!osgiServiceDependencies.isEmpty()) {
-                invalid:
                 for (Map.Entry<Class, Set<Filter>> entry : osgiServiceDependencies.entrySet()) {
                     Class clazz = entry.getKey();
+                    logger.trace("Scanning for {}", clazz);
+                    ServiceReference[] refs = null;
                     for (Filter filter : entry.getValue()) {
+                        logger.trace("Scanning for filter {}", filter);
+                        boolean available = true;
                         try {
-                            ServiceReference[] refs = null;
                             if (filter != null
                                 && filter.value() != null
                                 && filter.value().length() > 0) {
                                 refs = registry.getServiceReferences(clazz.getName(),
                                                                      filter.value());
-                            }
-                            else {
+                            } else {
                                 refs = registry.getServiceReferences(clazz.getName(),
                                                                      null);
                             }
                             if (refs != null) {
-                                int available = refs.length;
-                                if (available <= 0) {
+                                if (refs.length <= 0) {
                                     valid = false;
-                                    break invalid;
+                                    available = false;
                                 }
-                            }
-                            else {
+                            } else {
                                 valid = false;
-                                break invalid;
+                                available = false;
                             }
                         }
                         catch(InvalidSyntaxException ex) {
                             valid = false;
-                            break invalid;
+                            available = false;
                         }
+                        if (available) {
+                            logger.debug("Service {} with filter {} is available", clazz, filter);
+                            Event e = availableEvent.select(new SpecificationAnnotation(clazz));
+                            ServiceEvents.ServiceAvailable msg = new ServiceEvents.ServiceAvailable(refs[0], registry);
+                            if (filter != null) {
+                                e = e.select(new FilterAnnotation(filter.value()));
+                            }
+                            e.fire(msg);
+                        } else {
+                            logger.debug("Service {} with filter {} is unavailable", clazz, filter);
+                            Event e = unavailableEvent.select(new SpecificationAnnotation(clazz));
+                            ServiceReference ref = null;
+                            if (event != null) {
+                                ref = event.getReference();
+                            }
+                            ServiceEvents.ServiceUnavailable msg = new ServiceEvents.ServiceUnavailable(ref, registry);
+                            if (filter != null) {
+                                e = e.select(new FilterAnnotation(filter.value()));
+                            }
+                            e.fire(msg);
+                        }
+                        refs = null;
                     }
                 }
             }
             // TODO : synchronize here to change the state of the bundle
             if (valid && bundleHolder.getState().equals(BundleState.INVALID)) {
+                logger.debug("Bundle {} is now VALID", bundleHolder.getBundle());
                 bundleHolder.setState(BundleState.VALID);
                 validEvent.fire(new Valid());
-            }
-            else if (!valid && bundleHolder.getState().equals(BundleState.VALID)) {
+            } else if (!valid && (bundleHolder.getState().equals(BundleState.VALID) || event == null)) {
+                logger.debug("Bundle {} is now INVALID", bundleHolder.getBundle());
                 bundleHolder.setState(BundleState.INVALID);
                 invalidEvent.fire(new Invalid());
             }
@@ -199,8 +238,13 @@ public class ServiceRegistryImpl implements ServiceRegistry {
     }
 
     private boolean applicable(List<Class<?>> classes) {
+        logger.trace("Entering ServiceRegistryImpl : "
+                     + "applicable() with parameter {} "
+                     + "for bundle {} and instance {}",
+                     new Object[] {classes, bundle, this});
         for (Class<?> clazz : classes) {
             if (osgiServiceDependencies.containsKey(clazz)) {
+                logger.trace("Class {} is required", clazz);
                 return true;
             }
         }
