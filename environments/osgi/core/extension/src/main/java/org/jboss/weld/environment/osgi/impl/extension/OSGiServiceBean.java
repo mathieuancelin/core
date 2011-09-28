@@ -165,7 +165,7 @@ public class OSGiServiceBean implements Bean {
                 handlers.put(proxy, handler);
                 handler.setStored(true);
             }
-            logger.debug("New proxy for {} created {}", this, proxy);
+            logger.debug("New proxy for {} created", this);
             return proxy;
         }
         catch(Exception e) {
@@ -177,8 +177,8 @@ public class OSGiServiceBean implements Bean {
     @Override
     public void destroy(Object instance, CreationalContext creationalContext) {
         logger.trace("Entering OSGiServiceBean : "
-                     + "destroy() with parameter {} | {}",
-                     new Object[] {instance, creationalContext});
+                     + "destroy() with parameter {}",
+                     new Object[] {creationalContext});
         // Nothing to do, services are unget after each call.
         DynamicServiceHandler handler = handlers.get(instance);
         if (handler != null) {
