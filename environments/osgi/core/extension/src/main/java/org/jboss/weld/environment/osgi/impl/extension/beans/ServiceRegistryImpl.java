@@ -83,10 +83,10 @@ public class ServiceRegistryImpl implements ServiceRegistry {
     private BeanManager manager;
 
     @Inject
-    private Event<BundleValid> validEvent;
+    private Event<Valid> validEvent;
 
     @Inject
-    private Event<BundleInvalid> invalidEvent;
+    private Event<Invalid> invalidEvent;
 
     @Inject
     private Event<ServiceEvents.ServiceAvailable> availableEvent;
