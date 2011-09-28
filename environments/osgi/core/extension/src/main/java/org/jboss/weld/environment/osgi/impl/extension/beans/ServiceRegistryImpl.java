@@ -23,9 +23,9 @@ import org.jboss.weld.environment.osgi.api.ServiceRegistry;
 import org.jboss.weld.environment.osgi.api.annotation.Filter;
 import org.jboss.weld.environment.osgi.api.events.AbstractServiceEvent;
 import org.jboss.weld.environment.osgi.api.events.BundleContainerEvents;
-import org.jboss.weld.environment.osgi.api.events.BundleEvents.BundleInvalid;
+import org.jboss.weld.environment.osgi.api.events.Invalid;
 import org.jboss.weld.environment.osgi.api.events.ServiceEvents;
-import org.jboss.weld.environment.osgi.api.events.BundleEvents.BundleValid;
+import org.jboss.weld.environment.osgi.api.events.Valid;
 import org.jboss.weld.environment.osgi.impl.extension.service.WeldOSGiExtension;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
@@ -228,11 +228,11 @@ public class ServiceRegistryImpl implements ServiceRegistry {
             if (valid && bundleHolder.getState().equals(BundleState.INVALID)) {
                 logger.debug("Bundle {} is now VALID", bundleHolder.getBundle());
                 bundleHolder.setState(BundleState.VALID);
-                validEvent.fire(new BundleValid(bundle));
+                validEvent.fire(new Valid());
             } else if (!valid && (bundleHolder.getState().equals(BundleState.VALID) || event == null)) {
                 logger.debug("Bundle {} is now INVALID", bundleHolder.getBundle());
                 bundleHolder.setState(BundleState.INVALID);
-                invalidEvent.fire(new BundleInvalid(bundle));
+                invalidEvent.fire(new Invalid());
             }
         }
     }
