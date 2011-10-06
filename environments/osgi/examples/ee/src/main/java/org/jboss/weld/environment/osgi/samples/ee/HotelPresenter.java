@@ -14,20 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.osgi.examples.web.api;
 
-import java.util.Collection;
-import java.util.Date;
+package org.jboss.weld.environment.osgi.samples.ee;
 
-public interface HotelProvider {
+import org.jboss.weld.environment.osgi.samples.ee.annotation.Presenter;
+import org.jboss.weld.environment.osgi.samples.ee.service.HotelsBean;
+import javax.ejb.EJB;
+import javax.inject.Inject;
 
-    String getCountry();
+@Presenter
+public class HotelPresenter {
 
-    Collection<Hotel> hotels();
+    @Inject
+    HotelView view;
+    @EJB
+    HotelsBean helloBean;
 
-    boolean book(String id, Date checkin,
-            Date checkout, Integer beds,
-            Boolean smocking, String cardNumber,
-            String cardName, String cardMonth,
-            String cardYear);
+    public void searchHotels() {
+        view.setMessage("Hotels for " + view.getCountry());
+        view.setHotels(helloBean.getHotels());
+    }
 }

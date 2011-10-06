@@ -14,37 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.osgi.examples.web.england;
 
+package org.jboss.weld.environment.osgi.samples.ee.service;
+
+import org.jboss.weld.environment.osgi.samples.ee.HotelView;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import javax.enterprise.context.ApplicationScoped;
-import org.jboss.weld.environment.osgi.api.annotation.Publish;
+import java.util.List;
+import javax.ejb.Stateless;
+import javax.inject.Inject;
+import org.jboss.weld.environment.osgi.api.Service;
 import org.jboss.weld.osgi.examples.web.api.Hotel;
 import org.jboss.weld.osgi.examples.web.api.HotelProvider;
 
-@Publish
-@ApplicationScoped
-public class EnglandHotelProvider implements HotelProvider {
+@Stateless
+public class HotelsBean {
 
-    @Override
-    public Collection<Hotel> hotels() {
-        Collection<Hotel> hotels = new ArrayList<Hotel>();
-        hotels.add(new Hotel("The Montcalm", "London", "England", "2222", new Double(100)));
-        hotels.add(new Hotel("The Berkeley", "London", "England", "2222", new Double(200)));
+    @Inject HotelView view;
+    @Inject Service<HotelProvider> providers;
+
+    public List<Hotel> getHotels() {
+        List<Hotel> hotels = new ArrayList<Hotel>();
+        for (HotelProvider provider : providers) {
+            if (view.getCountry() == null || view.getCountry().equals("")) {
+                hotels.addAll(provider.hotels());
+            } else {
+                if (view.getCountry().equals(provider.getCountry())) {
+                    hotels.addAll(provider.hotels());
+                }
+            }
+        }
         return hotels;
-    }
-
-    @Override
-    public String getCountry() {
-        return "England";
-    }
-
-    @Override
-    public boolean book(String id, Date checkin, Date checkout, Integer beds,
-            Boolean smocking, String cardNumber, String cardName,
-            String cardMonth, String cardYear) {
-        return true;
     }
 }

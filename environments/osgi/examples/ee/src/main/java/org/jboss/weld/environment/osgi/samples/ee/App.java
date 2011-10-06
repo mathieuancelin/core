@@ -14,20 +14,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.osgi.examples.web.api;
 
-import java.util.Collection;
-import java.util.Date;
+package org.jboss.weld.environment.osgi.samples.ee;
 
-public interface HotelProvider {
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.jboss.weld.environment.osgi.api.events.Invalid;
 
-    String getCountry();
+import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.event.Observes;
+import org.jboss.weld.environment.osgi.api.events.Valid;
 
-    Collection<Hotel> hotels();
+@ApplicationScoped
+public class App {
 
-    boolean book(String id, Date checkin,
-            Date checkout, Integer beds,
-            Boolean smocking, String cardNumber,
-            String cardName, String cardMonth,
-            String cardYear);
+    private AtomicBoolean valid = new AtomicBoolean(false);
+
+    public void validate(@Observes Valid event) {
+        valid.getAndSet(true);
+    }
+
+    public void invalidate(@Observes Invalid event) {
+        valid.getAndSet(false);
+    }
+
+    public boolean isValid() {
+        return valid.get();
+    }
 }

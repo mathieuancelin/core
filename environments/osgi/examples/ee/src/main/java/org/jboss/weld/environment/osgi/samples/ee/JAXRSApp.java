@@ -14,20 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.osgi.examples.web.api;
 
-import java.util.Collection;
-import java.util.Date;
+package org.jboss.weld.environment.osgi.samples.ee;
 
-public interface HotelProvider {
+import javax.ws.rs.ApplicationPath;
+import javax.ws.rs.core.Application;
 
-    String getCountry();
-
-    Collection<Hotel> hotels();
-
-    boolean book(String id, Date checkin,
-            Date checkout, Integer beds,
-            Boolean smocking, String cardNumber,
-            String cardName, String cardMonth,
-            String cardYear);
+@ApplicationPath("res")
+public class JAXRSApp extends Application {
 }

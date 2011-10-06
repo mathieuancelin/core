@@ -14,20 +14,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jboss.weld.osgi.examples.web.api;
 
-import java.util.Collection;
-import java.util.Date;
+package org.jboss.weld.environment.osgi.samples.ee.annotation;
 
-public interface HotelProvider {
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+import javax.enterprise.context.RequestScoped;
+import javax.enterprise.inject.Stereotype;
+import javax.inject.Named;
 
-    String getCountry();
-
-    Collection<Hotel> hotels();
-
-    boolean book(String id, Date checkin,
-            Date checkout, Integer beds,
-            Boolean smocking, String cardNumber,
-            String cardName, String cardMonth,
-            String cardYear);
+/**
+ * Stereotype for Presenter bean. The presenter bean is responsible for
+ * UI logic.
+ *
+ * @author Mathieu ANCELIN - SERLI (mathieu.ancelin@serli.com)
+ */
+@Named
+@RequestScoped
+@Stereotype
+@Retention(RUNTIME)
+@Target({METHOD, FIELD, TYPE})
+public @interface Presenter {
 }
