@@ -192,7 +192,7 @@ public class WeldPhaseListener implements PhaseListener {
         log.trace(FOUND_CONVERSATION_FROM_REQUEST, cid);
         return cid;
     }
-    
+
     public static ServletContext getServletContext(FacesContext context) {
         return (ServletContext) context.getExternalContext().getContext();
     }
