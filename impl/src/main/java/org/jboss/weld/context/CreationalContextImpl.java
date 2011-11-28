@@ -29,6 +29,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * @author Pete Muir
+ * @author Ales Justin
+ */
 public class CreationalContextImpl<T> implements CreationalContext<T>, WeldCreationalContext<T>, Serializable {
 
     private static final long serialVersionUID = 7375854583908262422L;
@@ -49,6 +53,7 @@ public class CreationalContextImpl<T> implements CreationalContext<T>, WeldCreat
     private CreationalContextImpl(Contextual<T> contextual, Map<Contextual<?>, Object> incompleteInstances, List<ContextualInstance<?>> parentDependentInstancesStore) {
         this.incompleteInstances = incompleteInstances;
         this.contextual = contextual;
+        // this is direct ref by intention - to track dependencies hierarchy
         this.dependentInstances = Collections.synchronizedList(new ArrayList<ContextualInstance<?>>());
         this.parentDependentInstances = parentDependentInstancesStore;
     }
@@ -66,16 +71,25 @@ public class CreationalContextImpl<T> implements CreationalContext<T>, WeldCreat
     }
 
     public boolean containsIncompleteInstance(Contextual<?> bean) {
-        return incompleteInstances == null ? false : incompleteInstances.containsKey(bean);
+        return incompleteInstances != null && incompleteInstances.containsKey(bean);
     }
 
     public void addDependentInstance(ContextualInstance<?> contextualInstance) {
         parentDependentInstances.add(contextualInstance);
     }
 
+    @java.lang.SuppressWarnings({"NullableProblems"})
     public void release() {
+        release(null, null);
+    }
+
+    // should not be public
+    @java.lang.SuppressWarnings({"UnusedParameters"})
+    public void release(Contextual<T> contextual, T instance) {
         for (ContextualInstance<?> dependentInstance : dependentInstances) {
-            destroy(dependentInstance);
+            // do not destroy contextual again, since it's just being destroyed
+            if (contextual == null || (dependentInstance.getContextual().equals(contextual) == false))
+                destroy(dependentInstance);
         }
         if (incompleteInstances != null) {
             incompleteInstances.clear();
@@ -85,5 +99,4 @@ public class CreationalContextImpl<T> implements CreationalContext<T>, WeldCreat
     private static <T> void destroy(ContextualInstance<T> beanInstance) {
         beanInstance.getContextual().destroy(beanInstance.getInstance(), beanInstance.getCreationalContext());
     }
-
 }

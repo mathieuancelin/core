@@ -52,8 +52,10 @@ import org.jboss.weld.injection.CurrentInjectionPoint;
 import org.jboss.weld.literal.AnyLiteral;
 import org.jboss.weld.literal.DefaultLiteral;
 import org.jboss.weld.manager.api.WeldManager;
+import org.jboss.weld.metadata.cache.InterceptorBindingModel;
 import org.jboss.weld.metadata.cache.MetaAnnotationStore;
 import org.jboss.weld.metadata.cache.ScopeModel;
+import org.jboss.weld.metadata.cache.StereotypeModel;
 import org.jboss.weld.resolution.InterceptorResolvable;
 import org.jboss.weld.resolution.InterceptorResolvableBuilder;
 import org.jboss.weld.resolution.NameBasedResolver;
@@ -67,6 +69,7 @@ import org.jboss.weld.resolution.TypeSafeResolver;
 import org.jboss.weld.resources.ClassTransformer;
 import org.jboss.weld.serialization.spi.ContextualStore;
 import org.jboss.weld.util.Beans;
+import org.jboss.weld.util.BeansClosure;
 import org.jboss.weld.util.Observers;
 import org.jboss.weld.util.Proxies;
 import org.jboss.weld.util.collections.Arrays2;
@@ -97,7 +100,6 @@ import java.lang.reflect.Member;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -134,6 +136,7 @@ import static org.jboss.weld.util.reflection.Reflections.isCacheable;
  *
  * @author Pete Muir
  * @author Marius Bogoevici
+ * @author Ales Justin
  */
 public class BeanManagerImpl implements WeldManager, Serializable {
 
@@ -158,9 +161,6 @@ public class BeanManagerImpl implements WeldManager, Serializable {
 
     // TODO review this structure
     private final transient Map<EjbDescriptor<?>, SessionBean<?>> enterpriseBeans;
-
-    // TODO This isn't right, specialization should follow accessibility rules, but I think we can enforce these in resolve()
-    private final transient Map<Contextual<?>, Contextual<?>> specializedBeans;
 
     /*
     * Archive scoped data structures
@@ -256,18 +256,11 @@ public class BeanManagerImpl implements WeldManager, Serializable {
                 new ClientProxyProvider(contextId),
                 contexts,
                 new CopyOnWriteArraySet<CurrentActivity>(),
-                new HashMap<Contextual<?>, Contextual<?>>(),
                 enabled,
                 id, contextId,
                 new AtomicInteger());
     }
 
-    /**
-     * Create a new, root, manager
-     *
-     * @param serviceRegistry
-     * @return
-     */
     public static BeanManagerImpl newManager(BeanManagerImpl rootManager, String id, ServiceRegistry services, Enabled enabled) {
         return new BeanManagerImpl(
                 services,
@@ -281,7 +274,6 @@ public class BeanManagerImpl implements WeldManager, Serializable {
                 rootManager.getClientProxyProvider(),
                 rootManager.getContexts(),
                 new CopyOnWriteArraySet<CurrentActivity>(),
-                new HashMap<Contextual<?>, Contextual<?>>(),
                 enabled,
                 id, rootManager.contextId,
                 new AtomicInteger());
@@ -290,8 +282,8 @@ public class BeanManagerImpl implements WeldManager, Serializable {
     /**
      * Create a new child manager
      *
-     * @param parentManager
-     * @return
+     * @param parentManager the parent manager
+     * @return new child manager
      */
     public static BeanManagerImpl newChildActivityManager(BeanManagerImpl parentManager) {
         List<Bean<?>> beans = new CopyOnWriteArrayList<Bean<?>>();
@@ -316,19 +308,12 @@ public class BeanManagerImpl implements WeldManager, Serializable {
                 parentManager.getClientProxyProvider(),
                 parentManager.getContexts(),
                 parentManager.getCurrentActivities(),
-                parentManager.getSpecializedBeans(),
                 parentManager.getEnabled(),
                 new StringBuilder().append(parentManager.getChildIds().incrementAndGet()).toString(),
                 parentManager.contextId,
                 parentManager.getChildIds());
     }
 
-    /**
-     * Create a new manager
-     *
-     * @param enabledDecoratorClasses
-     * @param ejbServices             the ejbResolver to use
-     */
     private BeanManagerImpl(
             ServiceRegistry serviceRegistry,
             List<Bean<?>> beans,
@@ -341,7 +326,6 @@ public class BeanManagerImpl implements WeldManager, Serializable {
             ClientProxyProvider clientProxyProvider,
             Map<Class<? extends Annotation>, List<Context>> contexts,
             Set<CurrentActivity> currentActivities,
-            Map<Contextual<?>, Contextual<?>> specializedBeans,
             Enabled enabled,
             String id, String contextId,
             AtomicInteger childIds) {
@@ -354,7 +338,6 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         this.clientProxyProvider = clientProxyProvider;
         this.contexts = contexts;
         this.currentActivities = currentActivities;
-        this.specializedBeans = specializedBeans;
         this.observers = observers;
         this.enabled = enabled;
         this.namespaces = namespaces;
@@ -365,13 +348,12 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         // Set up the structure to store accessible managers in
         this.accessibleManagers = new HashSet<BeanManagerImpl>();
 
-
         // TODO Currently we build the accessible bean list on the fly, we need to set it in stone once bootstrap is finished...
         Transform<Bean<?>> beanTransform = new BeanTransform(this);
         this.beanResolver = new TypeSafeBeanResolver<Bean<?>>(this, createDynamicAccessibleIterable(beanTransform));
-        this.decoratorResolver = new TypeSafeDecoratorResolver(this, createDynamicAccessibleIterable(new DecoratorTransform()));
-        this.interceptorResolver = new TypeSafeInterceptorResolver(this, createDynamicAccessibleIterable(new InterceptorTransform()));
-        this.observerResolver = new TypeSafeObserverResolver(this, createDynamicAccessibleIterable(new ObserverMethodTransform()));
+        this.decoratorResolver = new TypeSafeDecoratorResolver(this, createDynamicAccessibleIterable(DecoratorTransform.INSTANCE));
+        this.interceptorResolver = new TypeSafeInterceptorResolver(this, createDynamicAccessibleIterable(InterceptorTransform.INSTANCE));
+        this.observerResolver = new TypeSafeObserverResolver(this, createDynamicAccessibleIterable(ObserverMethodTransform.INSTANCE));
         this.nameBasedResolver = new NameBasedResolver(this, createDynamicAccessibleIterable(beanTransform));
         this.weldELResolver = new WeldELResolver(this);
         this.childActivities = new CopyOnWriteArraySet<BeanManagerImpl>();
@@ -478,15 +460,19 @@ public class BeanManagerImpl implements WeldManager, Serializable {
 
     public Set<Bean<?>> getBeans(InjectionPoint injectionPoint) {
         boolean registerInjectionPoint = !injectionPoint.getType().equals(InjectionPoint.class);
+        CurrentInjectionPoint currentInjectionPoint = null;
+        if (registerInjectionPoint) {
+            currentInjectionPoint = Container.instance(contextId).services().get(CurrentInjectionPoint.class);
+        }
         try {
             if (registerInjectionPoint) {
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).push(injectionPoint);
+                currentInjectionPoint.push(injectionPoint);
             }
             // We always cache, we assume that people don't use inline annotation literal declarations, a little risky but FAQd
             return beanResolver.resolve(new ResolvableBuilder(contextId, injectionPoint).create(), true);
         } finally {
             if (registerInjectionPoint) {
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).pop();
+                currentInjectionPoint.pop();
             }
         }
     }
@@ -682,9 +668,13 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         }
         boolean registerInjectionPoint = (injectionPoint != null && !injectionPoint.getType().equals(InjectionPoint.class));
         boolean delegateInjectionPoint = injectionPoint != null && injectionPoint.isDelegate();
+        CurrentInjectionPoint currentInjectionPoint = null;
+        if (registerInjectionPoint) {
+            currentInjectionPoint = Container.instance(contextId).services().get(CurrentInjectionPoint.class);
+        }
         try {
             if (registerInjectionPoint) {
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).push(injectionPoint);
+                currentInjectionPoint.push(injectionPoint);
             }
             if (getServices().get(MetaAnnotationStore.class).getScopeModel(resolvedBean.getScope()).isNormal() && !Proxies.isTypeProxyable(injectionPoint.getType())) {
                 throw new UnproxyableResolutionException(UNPROXYABLE_RESOLUTION, resolvedBean, injectionPoint);
@@ -702,7 +692,7 @@ public class BeanManagerImpl implements WeldManager, Serializable {
             }
         } finally {
             if (registerInjectionPoint) {
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).pop();
+                currentInjectionPoint.pop();
             }
         }
     }
@@ -726,7 +716,7 @@ public class BeanManagerImpl implements WeldManager, Serializable {
 
         boolean normalScoped = getServices().get(MetaAnnotationStore.class).getScopeModel(bean.getScope()).isNormal();
         if (normalScoped && !Beans.isBeanProxyable(bean)) {
-            throw Proxies.getUnproxyableTypesException(bean.getTypes());
+            throw Proxies.getUnproxyableTypesException(bean);
         }
         return bean;
     }
@@ -808,7 +798,6 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         buffer.append("Enabled alternatives: " + getEnabled().getAlternativeClasses() + " " + getEnabled().getAlternativeStereotypes() + "\n");
         buffer.append("Registered contexts: " + contexts.keySet() + "\n");
         buffer.append("Registered beans: " + getBeans().size() + "\n");
-        buffer.append("Specialized beans: " + specializedBeans.size() + "\n");
         return buffer.toString();
     }
 
@@ -863,12 +852,11 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         return services;
     }
 
-    /**
-     * @return
-     */
+    @SuppressWarnings({"deprecation", "unchecked"})
+    @Deprecated // should nto be used anymore
     public Map<Contextual<?>, Contextual<?>> getSpecializedBeans() {
-        // TODO make this unmodifiable after deploy!
-        return specializedBeans;
+        BeansClosure closure = BeansClosure.getClosure(this);
+        return closure.getSpecialized();
     }
 
     // Serialization
@@ -945,14 +933,9 @@ public class BeanManagerImpl implements WeldManager, Serializable {
     }
 
     public <X> Bean<? extends X> getMostSpecializedBean(Bean<X> bean) {
-        Contextual<?> key = bean;
-        while (specializedBeans.containsKey(key)) {
-            if (key == null) {
-                System.out.println("null key " + bean);
-            }
-            key = specializedBeans.get(key);
-        }
-        return cast(key);
+        BeansClosure closure = BeansClosure.getClosure(this);
+        //noinspection unchecked
+        return (Bean<? extends X>) closure.mostSpecialized(bean);
     }
 
     public void validate(InjectionPoint ij) {
@@ -964,8 +947,9 @@ public class BeanManagerImpl implements WeldManager, Serializable {
     }
 
     public Set<Annotation> getInterceptorBindingDefinition(Class<? extends Annotation> bindingType) {
-        if (getServices().get(MetaAnnotationStore.class).getInterceptorBindingModel(bindingType).isValid()) {
-            return getServices().get(MetaAnnotationStore.class).getInterceptorBindingModel(bindingType).getMetaAnnotations();
+        InterceptorBindingModel<? extends Annotation> model = getServices().get(MetaAnnotationStore.class).getInterceptorBindingModel(bindingType);
+        if (model.isValid()) {
+            return model.getMetaAnnotations();
         } else {
             throw new IllegalArgumentException(NOT_INTERCEPTOR_BINDING_TYPE, bindingType);
         }
@@ -976,8 +960,9 @@ public class BeanManagerImpl implements WeldManager, Serializable {
     }
 
     public Set<Annotation> getStereotypeDefinition(Class<? extends Annotation> stereotype) {
-        if (getServices().get(MetaAnnotationStore.class).getStereotype(stereotype).isValid()) {
-            return getServices().get(MetaAnnotationStore.class).getStereotype(stereotype).getMetaAnnotations();
+        final StereotypeModel<? extends Annotation> model = getServices().get(MetaAnnotationStore.class).getStereotype(stereotype);
+        if (model.isValid()) {
+            return model.getMetaAnnotations();
         } else {
             throw new IllegalArgumentException(NOT_STEREOTYPE, stereotype);
         }
@@ -1062,7 +1047,7 @@ public class BeanManagerImpl implements WeldManager, Serializable {
         this.namespaces.clear();
         this.observerResolver.clear();
         this.observers.clear();
-        this.specializedBeans.clear();
+        BeansClosure.removeClosure(this);
     }
 
     public Map<Class<?>, InterceptionModel<ClassMetadata<?>, ?>> getInterceptorModelRegistry() {

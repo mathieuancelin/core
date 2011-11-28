@@ -45,7 +45,6 @@ import org.jboss.weld.introspector.WeldField;
 import org.jboss.weld.introspector.WeldMethod;
 import org.jboss.weld.introspector.WeldParameter;
 import org.jboss.weld.manager.BeanManagerImpl;
-import org.jboss.weld.manager.BeanManagers;
 import org.jboss.weld.manager.Enabled;
 import org.jboss.weld.metadata.cache.InterceptorBindingModel;
 import org.jboss.weld.metadata.cache.MergedStereotypes;
@@ -400,6 +399,9 @@ public class Beans {
     public static Set<ParameterInjectionPoint<?, ?>> getParameterInjectionPoints(String contextId, Bean<?> declaringBean, MethodInjectionPoint<?, ?> method) {
         ArraySet<ParameterInjectionPoint<?, ?>> injectionPoints = new ArraySet<ParameterInjectionPoint<?, ?>>();
         for (WeldParameter<?, ?> parameter : method.getWeldParameters()) {
+            if (parameter.isAnnotationPresent(Disposes.class)) {
+                continue; // disposes parameter is not an injection point
+            }
             injectionPoints.add(ParameterInjectionPoint.of(contextId, declaringBean, parameter));
         }
         return injectionPoints.trimToSize();
@@ -489,9 +491,8 @@ public class Beans {
      * <p/>
      * The deployment type X is
      *
-     * @param <T>
      * @param beans                  The beans to filter
-     * @param enabledDeploymentTypes The enabled deployment types
+     * @param beanManager the bean manager
      * @return The filtered beans
      */
     public static <T extends Bean<?>> Set<T> removeDisabledAndSpecializedBeans(Set<T> beans, BeanManagerImpl beanManager) {
@@ -532,8 +533,8 @@ public class Beans {
     /**
      * Check if any of the beans is an alternative
      *
-     * @param beans
-     * @return
+     * @param beans the beans to check
+     * @return true if any bean is an alternative
      */
     public static boolean isAlternativePresent(Set<Bean<?>> beans) {
         for (Bean<?> bean : beans) {
@@ -544,33 +545,42 @@ public class Beans {
         return false;
     }
 
+    /**
+     * Is alternative.
+     *
+     * @param annotated the annotated
+     * @param mergedStereotypes merged stereotypes
+     * @return true if alternative, false otherwise
+     */
     public static boolean isAlternative(WeldAnnotated<?, ?> annotated, MergedStereotypes<?, ?> mergedStereotypes) {
-        if (annotated.isAnnotationPresent(Alternative.class)) {
-            return true;
-        } else {
-            return mergedStereotypes.isAlternative();
-        }
+        return annotated.isAnnotationPresent(Alternative.class) || mergedStereotypes.isAlternative();
     }
 
     /**
      * Check if bean is specialized by any of beans
      *
-     * @param bean
-     * @param beans
-     * @param allSpecializedBeans
-     * @return
+     * @param bean the bean to check
+     * @param beanManager bean manager
+     * @return true if bean is specialized by some bean in all beans
+     */
+    public static <T extends Bean<?>> boolean isSpecialized(T bean, BeanManagerImpl beanManager) {
+        BeansClosure closure = BeansClosure.getClosure(beanManager);
+        return closure.isSpecialized(bean);
+    }
+
+    /**
+     * Check if bean is specialized by any of beans
+     *
+     * @param bean the bean to check
+     * @param beans the possible specialized beans
+     * @param beanManager bean manager
+     * @return true if bean is specialized by some bean in beans
      */
     public static <T extends Bean<?>> boolean isSpecialized(T bean, Set<T> beans, BeanManagerImpl beanManager) {
-        for (Iterable<BeanManagerImpl> beanManagers : BeanManagers.getAccessibleClosure(beanManager)) {
-            for (BeanManagerImpl accessibleBeanManager : beanManagers) {
-                if (accessibleBeanManager.getSpecializedBeans().containsKey(bean)) {
-                    if (beans.contains(accessibleBeanManager.getSpecializedBeans().get(bean))) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        BeansClosure closure = BeansClosure.getClosure(beanManager);
+        Bean<?> specializedBean = closure.getSpecialized(bean);
+        //noinspection SuspiciousMethodCalls
+        return (specializedBean != null && beans.contains(specializedBean));
     }
 
     public static <T> ConstructorInjectionPoint<T> getBeanConstructor(String contextId, Bean<T> declaringBean, WeldClass<T> type) {
@@ -647,12 +657,14 @@ public class Beans {
         }
 
         if (jpaServices != null) {
-            Class<? extends Annotation> persistenceUnitAnnotationType = manager.getServices().get(PersistenceApiAbstraction.class).PERSISTENCE_UNIT_ANNOTATION_CLASS;
+            final PersistenceApiAbstraction persistenceApiAbstraction = manager.getServices().get(PersistenceApiAbstraction.class);
+
+            Class<? extends Annotation> persistenceUnitAnnotationType = persistenceApiAbstraction.PERSISTENCE_UNIT_ANNOTATION_CLASS;
             if (injectionPoint.isAnnotationPresent(persistenceUnitAnnotationType)) {
                 return jpaServices.resolvePersistenceUnit(injectionPoint);
             }
 
-            Class<? extends Annotation> persistenceContextAnnotationType = manager.getServices().get(PersistenceApiAbstraction.class).PERSISTENCE_CONTEXT_ANNOTATION_CLASS;
+            Class<? extends Annotation> persistenceContextAnnotationType = persistenceApiAbstraction.PERSISTENCE_CONTEXT_ANNOTATION_CLASS;
             if (injectionPoint.isAnnotationPresent(persistenceContextAnnotationType)) {
                 return jpaServices.resolvePersistenceContext(injectionPoint);
             }
@@ -735,9 +747,10 @@ public class Beans {
             result.addAll(qualifiers);
 
         if (newQualifiers != null && newQualifiers.length > 0) {
+            final MetaAnnotationStore store = Container.instance(contextId).services().get(MetaAnnotationStore.class);
             Set<Annotation> checkedNewQualifiers = new HashSet<Annotation>();
             for (Annotation qualifier : newQualifiers) {
-                if (!Container.instance(contextId).services().get(MetaAnnotationStore.class).getBindingTypeModel(qualifier.annotationType()).isValid()) {
+                if (!store.getBindingTypeModel(qualifier.annotationType()).isValid()) {
                     throw new IllegalArgumentException(ANNOTATION_NOT_QUALIFIER, qualifier);
                 }
                 if (checkedNewQualifiers.contains(qualifier)) {

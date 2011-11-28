@@ -419,8 +419,7 @@ public abstract class AbstractClassBean<T> extends AbstractBean<T, Class<T>> {
      */
     @Override
     protected String getDefaultName() {
-        String name = Introspector.decapitalize(getWeldAnnotated().getSimpleName());
-        return name;
+        return Introspector.decapitalize(getWeldAnnotated().getSimpleName());
     }
 
     /**
@@ -558,11 +557,12 @@ public abstract class AbstractClassBean<T> extends AbstractBean<T, Class<T>> {
     }
 
     protected void initEnhancedSubclass() {
-        enhancedSubclass = beanManager.getServices().get(ClassTransformer.class).loadClass(createEnhancedSubclass());
-        constructorForEnhancedSubclass = WeldConstructorImpl.of(getBeanManager().getContextId(),
+        final ClassTransformer transformer = beanManager.getServices().get(ClassTransformer.class);
+        enhancedSubclass = transformer.loadClass(createEnhancedSubclass());
+        constructorForEnhancedSubclass = WeldConstructorImpl.of(beanManager.getContextId(),
                 enhancedSubclass.getDeclaredWeldConstructor(getConstructor().getSignature()),
                 enhancedSubclass,
-                beanManager.getServices().get(ClassTransformer.class));
+                transformer);
     }
 
     protected Class<T> createEnhancedSubclass() {
