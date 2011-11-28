@@ -20,6 +20,7 @@ import com.google.common.base.Function;
 import com.google.common.collect.ComputationException;
 import com.google.common.collect.MapMaker;
 import org.jboss.weld.bootstrap.api.Service;
+import org.jboss.weld.introspector.ForwardingAnnotatedType;
 import org.jboss.weld.introspector.WeldAnnotation;
 import org.jboss.weld.introspector.WeldClass;
 import org.jboss.weld.introspector.jlr.WeldAnnotationImpl;
@@ -131,9 +132,6 @@ public class ClassTransformer implements Service {
     private final ConcurrentMap<Class<? extends Annotation>, WeldAnnotation<?>> annotations;
     private final TypeStore typeStore;
 
-    /**
-     *
-     */
     public ClassTransformer(String contextId, TypeStore typeStore) {
         MapMaker maker = new MapMaker();
         this.classes = maker.makeComputingMap(new TransformTypeToWeldClass(contextId, this));
@@ -173,7 +171,15 @@ public class ClassTransformer implements Service {
 
     @SuppressWarnings("unchecked")
     public <T> WeldClass<T> loadClass(final AnnotatedType<T> clazz) {
-        return (WeldClass<T>) annotatedTypes.get(clazz);
+        // don't wrap existing weld class, dup instances!
+       if (clazz instanceof WeldClass) {
+            return (WeldClass<T>) clazz;
+        } else if (clazz instanceof ForwardingAnnotatedType && ((ForwardingAnnotatedType) clazz).delegate() instanceof WeldClass) {
+            ForwardingAnnotatedType fat = (ForwardingAnnotatedType) clazz;
+            return (WeldClass<T>) fat.delegate();
+        } else {
+            return (WeldClass<T>) annotatedTypes.get(clazz);
+        }
     }
 
     @SuppressWarnings("unchecked")

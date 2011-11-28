@@ -144,7 +144,6 @@ public class WeldListener extends AbstractServletListener {
         if (contextId == null) {
             contextId = RegistrySingletonProvider.STATIC_INSTANCE;
         }
-
         log.trace(REQUEST_INITIALIZED, event.getServletRequest());
         // JBoss AS will still start the deployment even if Weld fails to start
         if (Container.available(contextId)) {

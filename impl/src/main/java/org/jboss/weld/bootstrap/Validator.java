@@ -29,7 +29,9 @@ import org.jboss.weld.bean.DisposalMethod;
 import org.jboss.weld.bean.InterceptorImpl;
 import org.jboss.weld.bean.NewManagedBean;
 import org.jboss.weld.bean.NewSessionBean;
+import org.jboss.weld.bean.ProducerMethod;
 import org.jboss.weld.bean.RIBean;
+import org.jboss.weld.bean.SessionBean;
 import org.jboss.weld.bean.WeldDecorator;
 import org.jboss.weld.bean.builtin.AbstractBuiltInBean;
 import org.jboss.weld.bootstrap.api.Service;
@@ -68,6 +70,7 @@ import javax.enterprise.inject.spi.Decorator;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.InjectionTarget;
 import javax.enterprise.inject.spi.Interceptor;
+import javax.enterprise.inject.spi.PassivationCapable;
 import javax.inject.Named;
 import javax.inject.Scope;
 import java.lang.annotation.Annotation;
@@ -85,39 +88,7 @@ import java.util.Set;
 
 import static org.jboss.weld.logging.Category.BOOTSTRAP;
 import static org.jboss.weld.logging.LoggerFactory.loggerFactory;
-import static org.jboss.weld.logging.messages.ValidatorMessage.ALTERNATIVE_BEAN_CLASS_NOT_ANNOTATED;
-import static org.jboss.weld.logging.messages.ValidatorMessage.ALTERNATIVE_BEAN_CLASS_NOT_CLASS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.ALTERNATIVE_STEREOTYPE_NOT_ANNOTATED;
-import static org.jboss.weld.logging.messages.ValidatorMessage.ALTERNATIVE_STEREOTYPE_NOT_STEREOTYPE;
-import static org.jboss.weld.logging.messages.ValidatorMessage.AMBIGUOUS_EL_NAME;
-import static org.jboss.weld.logging.messages.ValidatorMessage.BEAN_NAME_IS_PREFIX;
-import static org.jboss.weld.logging.messages.ValidatorMessage.BEAN_SPECIALIZED_TOO_MANY_TIMES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.DECORATORS_CANNOT_HAVE_DISPOSER_METHODS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.DECORATORS_CANNOT_HAVE_PRODUCER_FIELDS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.DECORATORS_CANNOT_HAVE_PRODUCER_METHODS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.DECORATOR_CLASS_NOT_BEAN_CLASS_OF_DECORATOR;
-import static org.jboss.weld.logging.messages.ValidatorMessage.DISPOSAL_METHODS_WITHOUT_PRODUCER;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_INTO_NON_BEAN;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_INTO_NON_DEPENDENT_BEAN;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_AMBIGUOUS_DEPENDENCIES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_NON_PROXYABLE_DEPENDENCIES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_NON_SERIALIZABLE_DEPENDENCY;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_NULLABLE_DEPENDENCIES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_UNSATISFIED_DEPENDENCIES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_HAS_WILDCARD;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_MUST_HAVE_TYPE_PARAMETER;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INJECTION_POINT_WITH_TYPE_VARIABLE;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INTERCEPTORS_CANNOT_HAVE_DISPOSER_METHODS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INTERCEPTORS_CANNOT_HAVE_PRODUCER_FIELDS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INTERCEPTORS_CANNOT_HAVE_PRODUCER_METHODS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.INTERCEPTOR_NOT_ANNOTATED_OR_REGISTERED;
-import static org.jboss.weld.logging.messages.ValidatorMessage.NEW_WITH_QUALIFIERS;
-import static org.jboss.weld.logging.messages.ValidatorMessage.NON_FIELD_INJECTION_POINT_CANNOT_USE_NAMED;
-import static org.jboss.weld.logging.messages.ValidatorMessage.NON_SERIALIZABLE_BEAN_INJECTED_INTO_PASSIVATING_BEAN;
-import static org.jboss.weld.logging.messages.ValidatorMessage.PASSIVATING_BEAN_WITH_NONSERIALIZABLE_DECORATOR;
-import static org.jboss.weld.logging.messages.ValidatorMessage.PASSIVATING_BEAN_WITH_NONSERIALIZABLE_INTERCEPTOR;
-import static org.jboss.weld.logging.messages.ValidatorMessage.PSEUDO_SCOPED_BEAN_HAS_CIRCULAR_REFERENCES;
-import static org.jboss.weld.logging.messages.ValidatorMessage.SCOPE_ANNOTATION_ON_INJECTION_POINT;
+import static org.jboss.weld.logging.messages.ValidatorMessage.*;
 import static org.jboss.weld.util.reflection.Reflections.cast;
 
 /**
@@ -136,7 +107,7 @@ public class Validator implements Service {
         }
         boolean normalScoped = beanManager.getServices().get(MetaAnnotationStore.class).getScopeModel(bean.getScope()).isNormal();
         if (normalScoped && !Beans.isBeanProxyable(bean)) {
-            throw Proxies.getUnproxyableTypesException(bean.getTypes());
+            throw Proxies.getUnproxyableTypesException(bean);
         }
         if (!normalScoped) {
             validatePseudoScopedBean(bean, beanManager);
@@ -171,6 +142,14 @@ public class Validator implements Service {
                     validateInterceptors(beanManager, classBean);
                 }
             }
+            // for each producer method validate its disposer method
+            if (bean instanceof ProducerMethod<?, ?> && ((ProducerMethod<?, ?>)bean).getDisposalMethod() != null) {
+                DisposalMethod<?, ?> disposalMethod = ((ProducerMethod<?, ?>)bean).getDisposalMethod();
+                for (InjectionPoint ip : disposalMethod.getInjectionPoints()) {
+                    // pass the producer bean instead of the disposal method bean
+                    validateInjectionPoint(ip, bean, beanManager);
+                }
+            }
         }
     }
 
@@ -179,31 +158,35 @@ public class Validator implements Service {
         if (interceptionModel != null) {
             Set<? extends InterceptorMetadata<?>> interceptors = interceptionModel.getAllInterceptors();
             if (interceptors.size() > 0) {
+                boolean passivationCapabilityCheckRequired = isPassivationCapabilityCheckRequired(beanManager, classBean);
                 for (InterceptorMetadata<?> interceptorMetadata : interceptors) {
                     if (interceptorMetadata.getInterceptorReference().getInterceptor() instanceof SerializableContextual) {
                         SerializableContextual<Interceptor<?>, ?> serializableContextual = cast(interceptorMetadata.getInterceptorReference().getInterceptor());
 
-                        if (classBean.isPassivationCapableBean() && !((InterceptorImpl<?>) serializableContextual.get()).isSerializable()) {
-                            throw new DeploymentException(PASSIVATING_BEAN_WITH_NONSERIALIZABLE_INTERCEPTOR, classBean, serializableContextual.get());
+                        if (passivationCapabilityCheckRequired) {
+                            Interceptor<?> interceptor = serializableContextual.get();
+                            boolean isSerializable = (interceptor instanceof InterceptorImpl) ? ((InterceptorImpl<?>) interceptor).isSerializable()  : (interceptor instanceof PassivationCapable);
+                            if (isSerializable == false)
+                                throw new DeploymentException(PASSIVATING_BEAN_WITH_NONSERIALIZABLE_INTERCEPTOR, classBean, interceptor);
                         }
                         for (InjectionPoint injectionPoint : serializableContextual.get().getInjectionPoints()) {
                             Bean<?> resolvedBean = beanManager.resolve(beanManager.getBeans(injectionPoint));
                             validateInjectionPoint(injectionPoint, beanManager);
-                            if (classBean.isPassivationCapableBean()) {
+                            if (passivationCapabilityCheckRequired) {
                                 validateInjectionPointPassivationCapable(injectionPoint, resolvedBean, beanManager);
                             }
                         }
                     }
                     if (interceptorMetadata.getInterceptorReference().getInterceptor() instanceof ClassMetadata<?>) {
                         ClassMetadata<?> classMetadata = (ClassMetadata<?>) interceptorMetadata.getInterceptorReference().getInterceptor();
-                        if (classBean.isPassivationCapableBean() && !Reflections.isSerializable(classMetadata.getJavaClass())) {
+                        if (passivationCapabilityCheckRequired && !Reflections.isSerializable(classMetadata.getJavaClass())) {
                             throw new DeploymentException(PASSIVATING_BEAN_WITH_NONSERIALIZABLE_INTERCEPTOR, this, classMetadata.getJavaClass().getName());
                         }
                         InjectionTarget<Object> injectionTarget = cast(beanManager.createInjectionTarget(beanManager.createAnnotatedType(classMetadata.getJavaClass())));
                         for (InjectionPoint injectionPoint : injectionTarget.getInjectionPoints()) {
                             Bean<?> resolvedBean = beanManager.resolve(beanManager.getBeans(injectionPoint));
                             validateInjectionPoint(injectionPoint, beanManager);
-                            if (classBean.isPassivationCapableBean()) {
+                            if (passivationCapabilityCheckRequired) {
                                 validateInjectionPointPassivationCapable(injectionPoint, resolvedBean, beanManager);
                             }
                         }
@@ -214,20 +197,40 @@ public class Validator implements Service {
     }
 
     private void validateDecorators(BeanManagerImpl beanManager, AbstractClassBean<?> classBean) {
-        for (Decorator<?> decorator : classBean.getDecorators()) {
-            if (classBean.isPassivationCapableBean() && !((WeldDecorator<?>) decorator).getWeldAnnotated().isSerializable()) {
-                throw new UnserializableDependencyException(PASSIVATING_BEAN_WITH_NONSERIALIZABLE_DECORATOR, classBean, decorator);
-            }
-            for (InjectionPoint ij : decorator.getInjectionPoints()) {
-                if (!ij.isDelegate()) {
-                    Bean<?> resolvedBean = beanManager.resolve(beanManager.getBeans(ij));
-                    validateInjectionPoint(ij, beanManager);
-                    if (classBean.isPassivationCapableBean()) {
-                        validateInjectionPointPassivationCapable(ij, resolvedBean, beanManager);
+        if (classBean.getDecorators().size() > 0) {
+            boolean passivationCapabilityCheckRequired = isPassivationCapabilityCheckRequired(beanManager, classBean);
+            for (Decorator<?> decorator : classBean.getDecorators()) {
+                if (passivationCapabilityCheckRequired) {
+                    boolean isSerializable = (decorator instanceof WeldDecorator<?>) ? (((WeldDecorator<?>) decorator).getWeldAnnotated().isSerializable())  : (decorator instanceof PassivationCapable);
+                    if (!isSerializable) {
+                        throw new UnserializableDependencyException(PASSIVATING_BEAN_WITH_NONSERIALIZABLE_DECORATOR, classBean, decorator);
+                    }
+                }
+                for (InjectionPoint ij : decorator.getInjectionPoints()) {
+                    if (!ij.isDelegate()) {
+                        Bean<?> resolvedBean = beanManager.resolve(beanManager.getBeans(ij));
+                        validateInjectionPoint(ij, beanManager);
+                        if (passivationCapabilityCheckRequired) {
+                            validateInjectionPointPassivationCapable(ij, resolvedBean, beanManager);
+                        }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Returns true if the bean should be validated according to CDI 1.0 (6.6.4). This is the case if the bean declares a
+     * passivating scope or is a SFSB.
+     */
+    protected boolean isPassivationCapabilityCheckRequired(BeanManagerImpl beanManager, AbstractClassBean<?> classBean) {
+        if (beanManager.getServices().get(MetaAnnotationStore.class).getScopeModel(classBean.getScope()).isPassivating()) {
+            return true;
+        }
+        if ((classBean instanceof SessionBean<?>) && ((SessionBean<?>)classBean).getEjbDescriptor().isStateful()) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -237,13 +240,20 @@ public class Validator implements Service {
      * @param beanManager the bean manager
      */
     public void validateInjectionPoint(InjectionPoint ij, BeanManagerImpl beanManager) {
+        validateInjectionPoint(ij, ij.getBean(), beanManager);
+    }
+
+    /**
+     * Variation of the validateInjectionPoint method which allows the bean to be defined explicitly (used for disposer method validation)
+     */
+    public void validateInjectionPoint(InjectionPoint ij, Bean<?> bean, BeanManagerImpl beanManager) {
         if (ij.getAnnotated().getAnnotation(New.class) != null && ij.getQualifiers().size() > 1) {
             throw new DefinitionException(NEW_WITH_QUALIFIERS, ij);
         }
-        if (ij.getType().equals(InjectionPoint.class) && ij.getBean() == null) {
+        if (ij.getType().equals(InjectionPoint.class) && bean == null) {
             throw new DefinitionException(INJECTION_INTO_NON_BEAN, ij);
         }
-        if (ij.getType().equals(InjectionPoint.class) && !Dependent.class.equals(ij.getBean().getScope())) {
+        if (ij.getType().equals(InjectionPoint.class) && !Dependent.class.equals(bean.getScope())) {
             throw new DefinitionException(INJECTION_INTO_NON_DEPENDENT_BEAN, ij);
         }
         if (ij.getType() instanceof TypeVariable<?>) {
@@ -252,7 +262,7 @@ public class Validator implements Service {
         if (!(ij.getMember() instanceof Field) && ij.getAnnotated().isAnnotationPresent(Named.class) && ij.getAnnotated().getAnnotation(Named.class).value().equals("")) {
             throw new DefinitionException(NON_FIELD_INJECTION_POINT_CANNOT_USE_NAMED, ij);
         }
-        boolean newBean = (ij.getBean() instanceof NewManagedBean<?>) || (ij.getBean() instanceof NewSessionBean<?>);
+        boolean newBean = (bean instanceof NewManagedBean<?>) || (bean instanceof NewSessionBean<?>);
         if (!newBean) {
             checkScopeAnnotations(ij, beanManager.getServices().get(MetaAnnotationStore.class));
         }
@@ -269,13 +279,18 @@ public class Validator implements Service {
         // Account for the case this is disabled decorator
         if (!resolvedBeans.isEmpty()) {
             Bean<?> resolvedBean = (Bean<?>) resolvedBeans.iterator().next();
-            if (beanManager.getServices().get(MetaAnnotationStore.class).getScopeModel(resolvedBean.getScope()).isNormal() && !Proxies.isTypeProxyable(ij.getType())) {
-                throw new UnproxyableResolutionException(INJECTION_POINT_HAS_NON_PROXYABLE_DEPENDENCIES, ij);
+            if (beanManager.getServices().get(MetaAnnotationStore.class).getScopeModel(resolvedBean.getScope()).isNormal()) {
+                UnproxyableResolutionException ue = Proxies.getUnproxyableTypeException(ij.getType());
+                if (ue != null) {
+                    UnproxyableResolutionException exception = new UnproxyableResolutionException(INJECTION_POINT_HAS_NON_PROXYABLE_DEPENDENCIES, ij);
+                    exception.initCause(ue);
+                    throw exception;
+                }
             }
             if (Reflections.isPrimitive(ij.getType()) && resolvedBean.isNullable()) {
                 throw new NullableDependencyException(INJECTION_POINT_HAS_NULLABLE_DEPENDENCIES, ij);
             }
-            if (ij.getBean() != null && Beans.isPassivatingScope(ij.getBean(), beanManager) && (!ij.isTransient()) && !Beans.isPassivationCapableBean(resolvedBean)) {
+            if (bean != null && Beans.isPassivatingScope(bean, beanManager) && (!ij.isTransient()) && !Beans.isPassivationCapableBean(resolvedBean)) {
                 validateInjectionPointPassivationCapable(ij, resolvedBean, beanManager);
             }
         }

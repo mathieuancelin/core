@@ -24,10 +24,12 @@ import org.jboss.weld.injection.WeldInjectionPoint;
 import org.jboss.weld.introspector.WeldAnnotated;
 import org.jboss.weld.literal.AnyLiteral;
 import org.jboss.weld.literal.DefaultLiteral;
+import org.jboss.weld.literal.NamedLiteral;
 import org.jboss.weld.manager.BeanManagerImpl;
 import org.jboss.weld.metadata.cache.MergedStereotypes;
 import org.jboss.weld.metadata.cache.MetaAnnotationStore;
 import org.jboss.weld.util.Beans;
+import org.jboss.weld.util.BeansClosure;
 import org.jboss.weld.util.collections.ArraySet;
 import org.jboss.weld.util.reflection.Reflections;
 import org.slf4j.cal10n.LocLogger;
@@ -44,6 +46,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -66,6 +69,7 @@ import static org.jboss.weld.logging.messages.BeanMessage.USING_SCOPE_FROM_STERE
  * @param <T> the type of bean
  * @param <S> the Class<?> of the bean type
  * @author Pete Muir
+ * @author Ales Justin
  */
 public abstract class AbstractBean<T, S> extends RIBean<T> {
 
@@ -184,10 +188,11 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
     protected static Set<Type> getTypedTypes(Map<Class<?>, Type> typeClosure, Class<?> rawType, Typed typed) {
         Set<Type> types = new HashSet<Type>();
         for (Class<?> specifiedClass : typed.value()) {
-            if (!typeClosure.containsKey(specifiedClass)) {
-                throw new DefinitionException(TYPED_CLASS_NOT_IN_HIERARCHY, specifiedClass.getName(), rawType);
+            Type tmp = typeClosure.get(specifiedClass);
+            if (tmp != null) {
+                types.add(tmp);
             } else {
-                types.add(typeClosure.get(specifiedClass));
+                throw new DefinitionException(TYPED_CLASS_NOT_IN_HIERARCHY, specifiedClass.getName(), rawType);
             }
         }
         types.add(Object.class);
@@ -213,6 +218,25 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
             }
         }
         this.qualifiers.add(AnyLiteral.INSTANCE);
+
+        // fix found Named, to have full name binding value
+        boolean foundRemoved = false;
+        Iterator<Annotation> qIter = qualifiers.iterator();
+        while (qIter.hasNext()) {
+            Annotation next = qIter.next();
+            if (next.annotationType().equals(Named.class)) {
+                Named named = (Named) next;
+                if (named.value().length() == 0) {
+                    qIter.remove();
+                    foundRemoved = true;
+                }
+                break;
+            }
+        }
+        if (foundRemoved) {
+            Named named = new NamedLiteral(getDefaultName());
+            qualifiers.add(named);
+        }
     }
 
     protected void initAlternative() {
@@ -238,7 +262,6 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
         if (beanNameDefaulted || getMergedStereotypes().isBeanNameDefaulted()) {
             this.name = getDefaultName();
             log.trace(USING_DEFAULT_NAME, name, this);
-            return;
         }
     }
 
@@ -265,7 +288,8 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
         if (isSpecializing() && getSpecializedBean().getWeldAnnotated().isAnnotationPresent(Named.class)) {
             this.name = getSpecializedBean().getName();
         }
-        beanManager.getSpecializedBeans().put(getSpecializedBean(), this);
+        BeansClosure closure = BeansClosure.getClosure(beanManager);
+        closure.addSpecialized(getSpecializedBean(), this);
     }
 
     protected void preSpecialize(BeanDeployerEnvironment environment) {
@@ -287,7 +311,7 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
      * Gets the binding types
      *
      * @return The set of binding types
-     * @see org.jboss.weld.bean.BaseBean#getQualifiers()
+     * @see org.jboss.weld.bean.RIBean#getQualifiers()
      */
     public Set<Annotation> getQualifiers() {
         return qualifiers;
@@ -325,7 +349,7 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
      * Gets the name of the bean
      *
      * @return The name
-     * @see org.jboss.weld.bean.BaseBean#getName()
+     * @see org.jboss.weld.bean.RIBean#getName()
      */
     public String getName() {
         return name;
@@ -335,7 +359,7 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
      * Gets the scope type of the bean
      *
      * @return The scope type
-     * @see org.jboss.weld.bean.BaseBean#getScope()
+     * @see org.jboss.weld.bean.RIBean#getScope()
      */
     public Class<? extends Annotation> getScope() {
         return scope;
@@ -355,7 +379,7 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
      * Gets the API types of the bean
      *
      * @return The set of API types
-     * @see org.jboss.weld.bean.BaseBean#getTypes()
+     * @see org.jboss.weld.bean.RIBean#getTypes()
      */
     public Set<Type> getTypes() {
         return types;
@@ -365,7 +389,7 @@ public abstract class AbstractBean<T, S> extends RIBean<T> {
      * Indicates if bean is nullable
      *
      * @return True if nullable, false otherwise
-     * @see org.jboss.weld.bean.BaseBean#isNullable()
+     * @see org.jboss.weld.bean.RIBean#isNullable()
      */
     public boolean isNullable() {
         return !isPrimitive();

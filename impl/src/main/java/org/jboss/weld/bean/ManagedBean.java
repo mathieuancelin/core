@@ -28,6 +28,7 @@ import org.jboss.weld.bean.interceptor.WeldInterceptorInstantiator;
 import org.jboss.weld.bean.proxy.CombinedInterceptorAndDecoratorStackMethodHandler;
 import org.jboss.weld.bootstrap.BeanDeployerEnvironment;
 import org.jboss.weld.bootstrap.api.ServiceRegistry;
+import org.jboss.weld.context.CreationalContextImpl;
 import org.jboss.weld.exceptions.DefinitionException;
 import org.jboss.weld.exceptions.DeploymentException;
 import org.jboss.weld.exceptions.IllegalStateException;
@@ -42,6 +43,7 @@ import org.jboss.weld.manager.BeanManagerImpl;
 import org.jboss.weld.metadata.cache.MetaAnnotationStore;
 import org.jboss.weld.util.AnnotatedTypes;
 import org.jboss.weld.util.Beans;
+import org.jboss.weld.util.BeansClosure;
 import org.jboss.weld.util.Proxies;
 import org.jboss.weld.util.reflection.Formats;
 import org.jboss.weld.util.reflection.Reflections;
@@ -51,6 +53,7 @@ import org.slf4j.ext.XLogger.Level;
 
 import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
+import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.Decorator;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.InjectionTarget;
@@ -77,6 +80,7 @@ import static org.jboss.weld.util.reflection.Reflections.cast;
  * @param <T> The type (class) of the bean
  * @author Pete Muir
  * @author Marius Bogoevici
+ * @author Ales Justin
  */
 public class ManagedBean<T> extends AbstractClassBean<T> {
 
@@ -115,9 +119,10 @@ public class ManagedBean<T> extends AbstractClassBean<T> {
 
         private void cleanup() {
             if (bean.hasDecorators()) {
-                String contextId = bean.beanManager.getContextId();
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).pop();
-                Container.instance(contextId).services().get(CurrentInjectionPoint.class).push(originalInjectionPoint);
+                final CurrentInjectionPoint currentInjectionPoint =
+                        Container.instance(bean.beanManager.getContextId()).services().get(CurrentInjectionPoint.class);
+                currentInjectionPoint.pop();
+                currentInjectionPoint.push(originalInjectionPoint);
             }
         }
 
@@ -296,7 +301,12 @@ public class ManagedBean<T> extends AbstractClassBean<T> {
     public void destroy(T instance, CreationalContext<T> creationalContext) {
         try {
             getInjectionTarget().preDestroy(instance);
-            creationalContext.release();
+            // WELD-1010 hack?
+            if (creationalContext instanceof CreationalContextImpl) {
+                ((CreationalContextImpl<T>) creationalContext).release(this, instance);
+            } else {
+                creationalContext.release();
+            }
         } catch (Exception e) {
             log.error(ERROR_DESTROYING, this, instance);
             xLog.throwing(Level.DEBUG, e);
@@ -324,8 +334,7 @@ public class ManagedBean<T> extends AbstractClassBean<T> {
             return getConstructor().newInstance(beanManager, ctx);
         } else {
             ProxyClassConstructorInjectionPointWrapper<T> constructorInjectionPointWrapper = new ProxyClassConstructorInjectionPointWrapper<T>(beanManager.getContextId(), this, constructorForEnhancedSubclass, getConstructor());
-            T instance = constructorInjectionPointWrapper.newInstance(beanManager, ctx);
-            return instance;
+            return constructorInjectionPointWrapper.newInstance(beanManager, ctx);
         }
     }
 
@@ -436,17 +445,19 @@ public class ManagedBean<T> extends AbstractClassBean<T> {
     @Override
     protected void preSpecialize(BeanDeployerEnvironment environment) {
         super.preSpecialize(environment);
-        if (environment.getEjbDescriptors().contains(getWeldAnnotated().getWeldSuperclass().getJavaClass())) {
+        BeansClosure closure = BeansClosure.getClosure(beanManager);
+        if (closure.isEJB(getWeldAnnotated().getWeldSuperclass())) {
             throw new DefinitionException(SPECIALIZING_BEAN_MUST_EXTEND_A_BEAN, this);
         }
     }
 
     @Override
     protected void specialize(BeanDeployerEnvironment environment) {
-        if (environment.getClassBean(getWeldAnnotated().getWeldSuperclass()) == null) {
+        BeansClosure closure = BeansClosure.getClosure(beanManager);
+        Bean<?> specializedBean = closure.getClassBean(getWeldAnnotated().getWeldSuperclass());
+        if (specializedBean == null) {
             throw new DefinitionException(SPECIALIZING_BEAN_MUST_EXTEND_A_BEAN, this);
         }
-        AbstractClassBean<?> specializedBean = environment.getClassBean(getWeldAnnotated().getWeldSuperclass());
         if (!(specializedBean instanceof ManagedBean<?>)) {
             throw new DefinitionException(SPECIALIZING_BEAN_MUST_EXTEND_A_BEAN, this);
         } else {

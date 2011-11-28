@@ -310,7 +310,7 @@ public class WeldOSGiExtension implements Extension {
             delegate.removeServiceListener(listener);
         }
     }
-    
+
     void afterDeployment(@Observes AfterDeploymentValidation event) {
         if (listener != null) {
             currentContext.remove();
