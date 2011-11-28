@@ -99,11 +99,10 @@ public class WeldPhaseListener implements PhaseListener {
 
     private void activateConversations(FacesContext facesContext) {
         if (contextId == null) {
-            if (facesContext.getAttributes().containsKey(Container.CONTEXT_ID_KEY)) {
-                contextId = (String) facesContext.getAttributes().get(Container.CONTEXT_ID_KEY);
-            } else {
-                contextId = RegistrySingletonProvider.STATIC_INSTANCE;
-            }
+            contextId = getServletContext(facesContext).getInitParameter(Container.CONTEXT_ID_KEY);
+        }
+        if (contextId == null) {
+            contextId = RegistrySingletonProvider.STATIC_INSTANCE;
         }
         HttpConversationContext conversationContext = instance(contextId).select(HttpConversationContext.class).get();
         String cid = getConversationId(facesContext, conversationContext);
@@ -146,9 +145,10 @@ public class WeldPhaseListener implements PhaseListener {
      */
     private void deactivateConversations(FacesContext facesContext, PhaseId phaseId) {
         if (contextId == null) {
-            if (facesContext.getAttributes().containsKey(Container.CONTEXT_ID_KEY)) {
-                contextId = (String) facesContext.getAttributes().get(Container.CONTEXT_ID_KEY);
-            }
+            contextId = getServletContext(facesContext).getInitParameter(Container.CONTEXT_ID_KEY);
+        }
+        if (contextId == null) {
+            contextId = RegistrySingletonProvider.STATIC_INSTANCE;
         }
         ConversationContext conversationContext = instance(contextId).select(HttpConversationContext.class).get();
         if (log.isTraceEnabled()) {
@@ -190,6 +190,10 @@ public class WeldPhaseListener implements PhaseListener {
         String cid = map.get(cidName);
         log.trace(FOUND_CONVERSATION_FROM_REQUEST, cid);
         return cid;
+    }
+    
+    public static ServletContext getServletContext(FacesContext context) {
+        return (ServletContext) context.getExternalContext().getContext();
     }
 
 }
