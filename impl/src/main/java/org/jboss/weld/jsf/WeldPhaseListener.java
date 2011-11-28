@@ -40,6 +40,7 @@ import javax.faces.event.PhaseEvent;
 import javax.faces.event.PhaseId;
 import javax.faces.event.PhaseListener;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.ServletContext;
 
 import org.jboss.weld.Container;
 import org.jboss.weld.bootstrap.api.helpers.RegistrySingletonProvider;
